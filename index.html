@@ -1053,6 +1053,7 @@ async function exportLocal(json){
   setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);snack("Copia descargada");
 }
 (function installable(){
+  try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist();}catch(e){}
   if("serviceWorker" in navigator&&window.isSecureContext&&location.protocol!=="file:")navigator.serviceWorker.register("sw.js").catch(()=>{});
   const standalone=window.matchMedia("(display-mode: standalone)").matches||navigator.standalone===true;
   if(standalone)return;
