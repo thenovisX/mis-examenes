@@ -179,7 +179,7 @@ nav.tabs .plus span{width:58px;height:58px;border-radius:999px;background:var(--
 #now .tx{flex:1;min-width:0;display:flex;flex-direction:column}
 #now .t{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #now .s{font-size:12px;opacity:.7}
-#now .pg{position:absolute;left:0;bottom:0;height:3px;background:var(--mint)}
+button:focus:not(:focus-visible){outline:none}
 #snack{position:fixed;left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px));bottom:calc(140px + env(safe-area-inset-bottom,0px));z-index:60;max-width:616px;margin:0 auto;background:#1C1C1F;color:#fff;border-radius:14px;min-height:56px;display:flex;align-items:center;gap:12px;padding:6px 6px 6px 14px;transform:translateY(20px);opacity:0;pointer-events:none;transition:.25s}
 #snack.on{transform:none;opacity:1;pointer-events:auto}
 #snack .ok{width:28px;height:28px;border-radius:999px;background:var(--accent);color:var(--on-accent);display:flex;align-items:center;justify-content:center;flex:none}
@@ -669,9 +669,9 @@ function updateNow(){
     const s=slotAt(m);
     if(s>=0&&s<slotsFor(di)&&D.schedule[di][s]){
       const b=blocks(di).find(b=>s>=b.from&&s<=b.to),sj=subject(b.id);
-      const a=toMin(D.times.from[b.from]),z=toMin(D.times.to[b.to]);const p=Math.max(0,Math.min(1,(m-a)/(z-a)));
+      const a=toMin(D.times.from[b.from]),z=toMin(D.times.to[b.to]);
       const nx=blocks(di).find(x=>x.from>b.to);const nxs=nx?subject(nx.id):null;
-      html=`<span class="sq" style="--c:${hex(sj.color)}">${esc(abbr(sj))}</span><span class="tx"><span class="t">Ahora · ${esc(sj.name)}</span><span class="s">Hasta las ${esc(D.times.to[b.to])}${nxs?" · luego "+esc(abbr(nxs)):""}</span></span><span class="pg" style="width:${p*100}%"></span>`;
+      html=`<span class="sq" style="--c:${hex(sj.color)}">${esc(abbr(sj))}</span><span class="tx"><span class="t">Ahora · ${esc(sj.name)}</span><span class="s">Hasta las ${esc(D.times.to[b.to])} · quedan ${Math.max(1,z-m)} min${nxs?" · luego "+esc(abbr(nxs)):""}</span></span>`;
       el.dataset.id=sj.id;
     }else if(D.times.breakFrom&&m>=toMin(D.times.breakFrom)&&m<toMin(D.times.breakTo)&&blocks(di).length){
       html=`<span class="sq" style="--c:#14B8A6;color:#04211D">☕</span><span class="tx"><span class="t">Recreo</span><span class="s">Hasta las ${esc(D.times.breakTo)}</span></span>`;el.dataset.id="";
