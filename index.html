@@ -229,15 +229,21 @@ html{color-scheme:light}
 body{margin:0;-webkit-text-size-adjust:100%;overscroll-behavior-y:none}
 img{max-width:100%}
 #app{padding-top:calc(12px + env(safe-area-inset-top,0px))!important}
-#inst{position:fixed;left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px));top:calc(10px + env(safe-area-inset-top,0px));z-index:30;max-width:616px;margin:0 auto;background:var(--surface);color:var(--text);border-radius:16px;box-shadow:0 8px 28px rgba(0,0,0,.18);display:flex;align-items:center;gap:12px;padding:10px 10px 10px 12px}
-#inst img{width:44px;height:44px;border-radius:11px;flex:none}
-#inst .tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
-#inst .t{font-size:15px;font-weight:700}
-#inst .s{font-size:13px;color:var(--sub);line-height:1.3}
-#inst .go{height:38px;padding:0 16px;border:0;border-radius:999px;background:var(--accent);color:var(--on-accent);font-size:14px;font-weight:800;flex:none}
-#inst .x{width:34px;height:34px;border:0;background:none;color:var(--sub);font-size:22px;flex:none}
+html.gated #app,html.gated nav.tabs,html.gated #now,html.gated #snack{display:none!important}
+html:not(.gated) #gate{display:none!important}
+#gate{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:18px;padding:calc(32px + env(safe-area-inset-top,0px)) max(24px,env(safe-area-inset-right,0px)) calc(32px + env(safe-area-inset-bottom,0px)) max(24px,env(safe-area-inset-left,0px))}
+#gate img{width:112px;height:112px;border-radius:26px;box-shadow:0 12px 32px rgba(15,118,110,.35)}
+#gate h1{font-size:34px}
+#gate p{margin:0;max-width:300px;font-size:16px;line-height:1.45;color:var(--sub)}
+#gate .btn{max-width:300px;height:56px;font-size:17px}
+#gate .steps{background:var(--surface);border-radius:16px;padding:14px 18px;text-align:left;max-width:320px;width:100%;font-size:15px;line-height:1.5;color:var(--text)}
+#gate .steps ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
 </style>
 
+<script>
+(function(){var st=false;try{st=window.matchMedia("(display-mode: standalone)").matches||window.matchMedia("(display-mode: fullscreen)").matches||navigator.standalone===true;}catch(e){}
+if(!st)document.documentElement.classList.add("gated");})();
+</script>
 </head>
 <body>
 <div id="app"></div>
@@ -252,7 +258,13 @@ img{max-width:100%}
 </div></nav>
 <input type="file" id="filein" accept=".json,application/json,text/plain" hidden>
 <div id="sheets"></div>
-<div id="inst" hidden role="dialog" aria-label="Instalar Mis Exámenes"><img src="icon-192.png" alt=""><span class="tx"><span class="t">Instala Mis Exámenes</span><span class="s" id="inst-s">Se abre a pantalla completa, como una app.</span></span><button class="go" id="inst-go">Instalar</button><button class="x" id="inst-x" aria-label="Ahora no">×</button></div>
+<main id="gate" aria-label="Instalar Mis Exámenes">
+  <img src="icon-512.png" alt="">
+  <h1>Mis Exámenes</h1>
+  <p id="gate-p">Tus notas, medias, horario y exámenes. Instálala para usarla, también sin internet.</p>
+  <button class="btn pri" id="gate-go" hidden>Instalar la app</button>
+  <div class="steps" id="gate-steps" hidden></div>
+</main>
 
 
 <script>
@@ -1055,19 +1067,28 @@ async function exportLocal(json){
 (function installable(){
   try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist();}catch(e){}
   if("serviceWorker" in navigator&&window.isSecureContext&&location.protocol!=="file:")navigator.serviceWorker.register("sw.js").catch(()=>{});
-  const standalone=window.matchMedia("(display-mode: standalone)").matches||navigator.standalone===true;
-  if(standalone)return;
-  let dismissed=false;try{dismissed=+localStorage.getItem("misexamenes-inst")>Date.now();}catch(e){}
-  if(dismissed)return;
-  const box=document.getElementById("inst"),go=document.getElementById("inst-go"),s=document.getElementById("inst-s");
-  const hide=days=>{box.hidden=true;if(days)try{localStorage.setItem("misexamenes-inst",String(Date.now()+days*864e5));}catch(e){}};
-  document.getElementById("inst-x").onclick=()=>hide(7);
+  if(!document.documentElement.classList.contains("gated"))return;
+  const go=document.getElementById("gate-go"),steps=document.getElementById("gate-steps"),p=document.getElementById("gate-p");
+  const ua=navigator.userAgent;
+  const ios=/iphone|ipad|ipod/i.test(ua)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+  const showSteps=html=>{steps.innerHTML=html;steps.hidden=false;};
   let deferred=null;
-  window.addEventListener("beforeinstallprompt",ev=>{ev.preventDefault();deferred=ev;s.textContent="Se abre a pantalla completa, como una app.";go.hidden=false;box.hidden=false;});
-  go.onclick=async()=>{if(!deferred)return;deferred.prompt();const r=await deferred.userChoice.catch(()=>null);deferred=null;hide(r&&r.outcome==="accepted"?3650:7);};
-  window.addEventListener("appinstalled",()=>hide(3650));
-  const ios=/iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
-  if(ios){s.innerHTML="Pulsa <b>Compartir</b> y luego <b>Añadir a pantalla de inicio</b>.";go.hidden=true;box.hidden=false;}
+  window.addEventListener("beforeinstallprompt",ev=>{ev.preventDefault();deferred=ev;steps.hidden=true;go.hidden=false;});
+  go.onclick=async()=>{if(!deferred)return;deferred.prompt();const r=await deferred.userChoice.catch(()=>null);deferred=null;go.hidden=true;
+    if(r&&r.outcome==="accepted")done();else fallback();};
+  const done=()=>{go.hidden=true;p.textContent="¡Instalada! Ábrela desde el icono de Mis Exámenes en tu pantalla de inicio.";steps.hidden=true;};
+  window.addEventListener("appinstalled",done);
+  // Si la app se instala y se abre, esta pestaña ya no hace falta
+  const mq=window.matchMedia("(display-mode: standalone)");mq.addEventListener&&mq.addEventListener("change",e=>{if(e.matches)location.reload();});
+  function fallback(){
+    if(ios){
+      const safari=/safari/i.test(ua)&&!/crios|fxios|edgios/i.test(ua);
+      showSteps(`<ol><li>Pulsa el botón <b>Compartir</b> (el cuadrado con la flecha hacia arriba).</li><li>Elige <b>Añadir a pantalla de inicio</b>.</li><li>Abre Mis Exámenes desde el icono nuevo.</li></ol>${safari?"":"<p style=\"margin:10px 0 0;font-size:13px\">Si no ves la opción, abre este enlace en Safari.</p>"}`);
+    }else{
+      showSteps(`<ol><li>Abre el menú del navegador (los tres puntos).</li><li>Pulsa <b>Instalar app</b> o <b>Añadir a pantalla de inicio</b>.</li><li>Abre Mis Exámenes desde el icono nuevo.</li></ol><p style="margin:10px 0 0;font-size:13px">Si ya la tienes instalada, ábrela desde su icono.</p>`);
+    }
+  }
+  if(ios)fallback();else setTimeout(()=>{if(!deferred)fallback();},2500);
 })();
 
 // ======================= Arranque =======================
