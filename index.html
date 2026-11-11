@@ -238,6 +238,19 @@ html:not(.gated) #gate{display:none!important}
 #gate .btn{max-width:300px;height:56px;font-size:17px}
 #gate .steps{background:var(--surface);border-radius:16px;padding:14px 18px;text-align:left;max-width:320px;width:100%;font-size:15px;line-height:1.5;color:var(--text)}
 #gate .steps ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+.simr{display:flex;align-items:center;gap:8px;padding:9px 0;font-size:15px}
+.simr + .simr{border-top:1px solid var(--line)}
+.simr .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--sub)}
+.simr.b .n{color:var(--text);font-weight:700}
+.simr .was{color:var(--faint);font-variant-numeric:tabular-nums}
+.simr .now{font-weight:800;font-variant-numeric:tabular-nums}
+.simr .now.ok{color:var(--ok)}.simr .now.ko{color:var(--ko)}
+.wkc{background:var(--surface);border-radius:16px;padding:14px 16px;text-align:left;width:100%;border:0;color:var(--text);display:flex;flex-direction:column;gap:3px}
+.wkc small{font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--sub)}
+.wkc b{font-size:17px;margin-bottom:2px}
+.wkc span{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wkc span.more{color:var(--sub);font-size:13px}
+.synclink{font-size:13px;word-break:break-all;user-select:all;background:var(--fill);border-radius:10px;padding:10px 12px;color:var(--text)}
 </style>
 
 <script>
@@ -270,7 +283,7 @@ if(!st)document.documentElement.classList.add("gated");})();
 <script>
 "use strict";
 // ======================= Datos (mismo formato que la app de Android) =======================
-const NORMAL=0, MEDIA=1, SUBIR=2, ALL=-1, DAYS=5, SLOTS=12;
+const NORMAL=0, MEDIA=1, SUBIR=2, RECU=3, ALL=-1, DAYS=5, SLOTS=12;
 const COLORS=[0xFF3B6FE0,0xFF2E9E6A,0xFFE0534A,0xFF8B5CF6,0xFFF08C2E,0xFF14A3A3,0xFF5B5FC7,0xFFDB4C8A,0xFF8D6E63,0xFF607D8B].map(c=>c|0);
 const SEED=["Sistemas operativos en red","Seguridad informática","Servicios en red","Aplicaciones web","Empresa e iniciativa emprendedora"];
 const DAY_NAMES=["Lunes","Martes","Miércoles","Jueves","Viernes"], DAY_SHORT=["L","M","X","J","V"];
@@ -372,23 +385,32 @@ function inTrim(e,tid){if(tid===ALL)return true;const t=trimOf(e);return !!t&&t.
 function holidayFor(date){return D.holidays.find(h=>date>=h.start&&date<=(h.end||h.start))||null;}
 function effGrade(e){if(!(e.grade>=0))return -1;let g=e.grade;for(const x of D.exams)if(x.type===SUBIR&&x.linkId===e.id&&x.grade>=0&&x.grade>g)g=x.grade;return g;}
 function rootOf(e){let cur=e,guard=0;while(cur.type===MEDIA&&guard++<50){const p=exam(cur.linkId);if(!p||p.subjectId!==e.subjectId||p.id===cur.id)break;cur=p;}return cur;}
+function recuGrade(sid,tid){let r=-1;for(const x of D.exams)if(x.subjectId===sid&&x.type===RECU&&x.linkId===tid&&x.grade>=0&&x.grade>r)r=x.grade;return r;}
 function stats(sid,tid=ALL){
-  const st={avg:-1,finalAvg:-1,totalW:0,gradedW:0,needed:NaN,equalWeights:false,exams:0,graded:0,simpleAvg:-1,official:-1,calcFinal:-1};
+  const st={avg:-1,finalAvg:-1,totalW:0,gradedW:0,needed:NaN,equalWeights:false,exams:0,graded:0,simpleAvg:-1,official:-1,calcFinal:-1,beforeRecu:-1,recu:-1,recovered:false};
   const groups=new Map();
-  for(const e of D.exams){if(e.subjectId!==sid||!inTrim(e,tid))continue;st.exams++;if(e.grade>=0)st.graded++;if(e.type===SUBIR)continue;
+  for(const e of D.exams){if(e.subjectId!==sid||!inTrim(e,tid))continue;st.exams++;if(e.grade>=0)st.graded++;if(e.type===SUBIR||e.type===RECU)continue;
     const r=rootOf(e).id;if(!groups.has(r))groups.set(r,[]);groups.get(r).push(e);}
   let declared=0;for(const r of groups.keys())declared+=Math.max(0,exam(r).weight||0);
   st.totalW=declared;st.equalWeights=declared<=0&&groups.size>0;
   let sS=0,sN=0;for(const gl of groups.values())for(const e of gl){const g=effGrade(e);if(g>=0){sS+=g;sN++;}}
   if(sN>0)st.simpleAvg=sS/sN;
+  // En el curso, un trimestre recuperado cuenta con la nota de la recuperación
+  const recG=new Map(),recW=new Map();
+  if(tid===ALL)for(const t of D.trimesters){const ts=stats(sid,t.id);if(ts.recovered)recG.set(t.id,ts.recu);}
   let total=0,graded=0,sum=0;
-  for(const [rid,gl] of groups){const w=st.equalWeights?1:Math.max(0,exam(rid).weight||0);total+=w;let gs=0,n=0;
+  for(const [rid,gl] of groups){const w=st.equalWeights?1:Math.max(0,exam(rid).weight||0);
+    if(recG.size){const rt=trimOf(exam(rid));if(rt&&recG.has(rt.id)){recW.set(rt.id,(recW.get(rt.id)||0)+w);continue;}}
+    total+=w;let gs=0,n=0;
     for(const e of gl){const g=effGrade(e);if(g>=0){gs+=g;n++;}}if(n>0){graded+=w;sum+=w*(gs/n);}}
+  for(const [t,w] of recW){total+=w;graded+=w;sum+=w*recG.get(t);}
   if(graded>0)st.avg=sum/graded;
   st.gradedW=st.equalWeights?(total>0?graded/total*100:0):graded;
   if(total>graded&&total>0)st.needed=(5*total-sum)/(total-graded);
   st.finalAvg=st.avg;
   if(tid===ALL)for(const x of D.exams)if(x.subjectId===sid&&x.type===SUBIR&&!x.linkId&&x.grade>=0&&x.grade>st.finalAvg)st.finalAvg=x.grade;
+  st.beforeRecu=st.finalAvg;
+  if(tid!==ALL){st.recu=recuGrade(sid,tid);if(st.recu>=0&&st.recu>st.finalAvg){st.finalAvg=st.recu;st.recovered=true;}}
   st.calcFinal=st.finalAvg;
   const s=subject(sid);if(s){const off=s.official[String(tid)];if(off!=null&&off>=0){st.official=off;st.finalAvg=off;}}
   return st;
@@ -422,35 +444,101 @@ function blocks(di){
 
 // ======================= Guardado =======================
 const LS="misexamenes-datos";
-let cloud=null, cloudReady=false, syncState="local", saveTimer=0, lastLocal=0;
+let lastLocal=0;
 function readLocal(){try{const s=localStorage.getItem(LS);if(s){const o=JSON.parse(s);return o&&o.json?o:null;}}catch(e){}return null;}
-function save(){
+function saveLocal(){
   const json=JSON.stringify(toJson(D));lastLocal=Date.now();
   try{localStorage.setItem(LS,JSON.stringify({json,updated:lastLocal}));}catch(e){}
-  if(cloud&&cloudReady){clearTimeout(saveTimer);saveTimer=setTimeout(()=>push(json),700);}
 }
-async function push(json){
-  if(json.length>250000){syncState="big";return;}
-  try{await cloud.set({json,updated:lastLocal});syncState="cloud";}catch(e){syncState="error";}
+function save(){
+  saveLocal();
+  if(SYNC){editSeq++;SYNC.dirty=true;saveSync();clearTimeout(pushT);pushT=setTimeout(()=>syncNow(false),1500);}
 }
-async function initCloud(){
-  try{
-    if(!window.claude||!window.claude.use)return;
-    const user=await window.claude.use("user");const db=await window.claude.use("db");
-    if(!user||!db)return;
-    const uid=await user.id();if(!uid)return;
-    cloud=db.doc("data/users/"+uid+"/datos");
-    const snap=await cloud.get();
-    const v=snap.exists?snap.data():null;
-    if(v&&typeof v.json==="string"&&(+v.updated||0)>lastLocal){
-      D=normalize(JSON.parse(v.json));lastLocal=+v.updated||0;
-      try{localStorage.setItem(LS,JSON.stringify({json:v.json,updated:lastLocal}));}catch(e){}
-      render();
-    }
-    cloudReady=true;syncState="cloud";
-    if(!v||(+v.updated||0)<lastLocal)push(JSON.stringify(toJson(D)));
-  }catch(e){syncState="error";}
+
+// ======================= Sincronizar con el Android (sync.php en esta web) =======================
+const SY="misexamenes-sync";
+let SYNC=null,editSeq=0,syncBusy=false,syncAgain=false,pushT=0;
+try{SYNC=JSON.parse(localStorage.getItem(SY)||"null");if(SYNC&&!/^[A-Za-z0-9]{16,64}$/.test(SYNC.code||""))SYNC=null;}catch(e){SYNC=null;}
+function saveSync(){try{if(SYNC)localStorage.setItem(SY,JSON.stringify(SYNC));else localStorage.removeItem(SY);}catch(e){}}
+const appBase=()=>new URL("./",location.href).href.split("#")[0];
+const syncLink=()=>appBase()+"#sync="+SYNC.code;
+function newCode(){const abc="ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";const r=new Uint32Array(24);crypto.getRandomValues(r);return Array.from(r,x=>abc[x%abc.length]).join("");}
+async function api(code,body){
+  const r=await fetch(appBase()+"sync.php?c="+code,{method:body?"POST":"GET",cache:"no-store",headers:body?{"Content-Type":"application/json"}:{},body:body?JSON.stringify(body):undefined});
+  if(r.status!==200&&r.status!==409)throw new Error("http "+r.status);
+  const o=await r.json();return {status:r.status,updated:+o.updated||0,json:typeof o.json==="string"?o.json:null};
 }
+function refreshSync(){if(SH&&SH.isSettings)settingsSheet();else if(!SH&&!S.detail&&S.tab==="inicio")render();}
+async function syncNow(manual){
+  if(!SYNC)return;if(syncBusy){syncAgain=true;return;}syncBusy=true;
+  const code=SYNC.code,base=SYNC.base||0,dirty=!!SYNC.dirty,seq=editSeq,json=JSON.stringify(toJson(D));
+  let r=null,posted=false;
+  try{r=await api(code);if(dirty&&(r.updated===base||r.updated===0)){r=await api(code,{base,json,force:false});posted=true;}}catch(e){r=null;}
+  syncBusy=false;
+  if(SYNC&&SYNC.code===code){
+    if(!r){SYNC.err=true;if(manual)snack("Sin conexión. Se sincroniza cuando vuelva internet");}
+    else{SYNC.err=false;SYNC.last=Date.now();
+      if(r.status===409)syncConflict(r);
+      else if(posted){SYNC.base=r.updated;if(seq===editSeq)SYNC.dirty=false;if(manual)snack("Sincronizado");}
+      else if(r.updated!==base&&r.json){if(!dirty)applyRemote(r);else syncConflict(r);}
+      else if(manual)snack("Ya estaba todo al día");}
+    saveSync();refreshSync();
+  }
+  if(syncAgain){syncAgain=false;syncNow(false);}
+}
+function applyRemote(r){
+  let d;try{d=normalize(JSON.parse(r.json));}catch(e){return snack("Los datos de la nube no son válidos");}
+  try{localStorage.setItem("misexamenes-antes-sync",JSON.stringify(toJson(D)));}catch(e){}
+  D=d;editSeq++;SYNC.base=r.updated;SYNC.dirty=false;saveSync();saveLocal();
+  if(S.detail&&!subject(S.detail))S.detail=0;if(S.period!==ALL&&!trim(S.period))S.period=ALL;
+  if(!SH)render();snack("Datos al día con la nube");
+}
+async function forcePush(base,msg){
+  if(!SYNC)return;const seq=editSeq,code=SYNC.code;syncBusy=true;
+  let r=null;try{r=await api(code,{base,json:JSON.stringify(toJson(D)),force:true});}catch(e){r=null;}
+  syncBusy=false;if(!SYNC||SYNC.code!==code)return;
+  if(!r||r.status!==200){SYNC.err=true;snack("No se pudo subir. Se intentará más tarde");}
+  else{SYNC.err=false;SYNC.base=r.updated;SYNC.last=Date.now();if(seq===editSeq)SYNC.dirty=false;if(msg)snack(msg);}
+  saveSync();refreshSync();
+  if(syncAgain){syncAgain=false;syncNow(false);}
+}
+function syncConflict(r){
+  if(!r.json)return forcePush(r.updated);
+  if(SH&&!SH.isSettings)return; // se vuelve a intentar en la siguiente sincronización
+  openSheet("Cambios en dos sitios",`<p class="note">Has cambiado datos aquí y también en otro dispositivo. ¿Con cuáles te quedas? Los otros se guardan en una copia en este móvil.</p>`,
+    {closeLabel:"Luego",footer:`<button class="btn pri" data-a="keepLocal">Los de este móvil</button><button class="btn" data-a="keepRemote">Los del otro</button>`});
+  SH.remote=r;
+}
+async function joinSync(text){
+  const m=/(?:sync=|[?&]c=)([A-Za-z0-9]{16,64})/.exec(text||"")||/^\s*([A-Za-z0-9]{16,64})\s*$/.exec(text||"");
+  if(!m)return snack("Pega el enlace entero, con #sync= al final");
+  const host=/https?:\/\/([^\/\s#?]+)/i.exec(text);
+  if(host&&host[1].toLowerCase()!==location.host.toLowerCase())return snack("Ese enlace es de otra web ("+host[1]+"). Ábrelo desde esa web.");
+  const code=m[1];let r;
+  try{r=await api(code);}catch(e){return snack("No se pudo conectar. Mira que tengas internet.");}
+  SYNC={code,base:0,dirty:true};editSeq++;saveSync();
+  if(r.updated>0&&r.json){
+    openSheet("Ya hay datos en la nube",`<p class="note">¿Con qué datos te quedas? Los otros se guardan en una copia en este móvil.</p>`,
+      {closeLabel:"Cancelar",footer:`<button class="btn pri" data-a="keepRemote">Los de la nube</button><button class="btn" data-a="keepLocal">Los de este móvil</button>`});
+    SH.remote=r;SH.joining=true;
+  }else{closeSheet();await forcePush(r.updated,"Sincronización activada");settingsSheet();}
+}
+async function createSync(){
+  const code=newCode();
+  try{await api(code);}catch(e){return snack("Esta web no tiene sincronización (falta sync.php) o no hay internet");}
+  SYNC={code,base:0,dirty:true};editSeq++;saveSync();
+  await forcePush(0,"Sincronización activada");settingsSheet();
+}
+async function sha256hex(t){const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(t));return Array.from(new Uint8Array(b),x=>x.toString(16).padStart(2,"0")).join("");}
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&SYNC)syncNow(false);});
+
+// ======================= Calendario (.ics) =======================
+function openIcs(data){
+  const f=document.createElement("form");f.method="post";f.action=appBase()+"sync.php?ics=post";f.target="_blank";
+  const i=document.createElement("input");i.type="hidden";i.name="json";i.value=JSON.stringify(data);f.appendChild(i);
+  document.body.appendChild(f);f.submit();setTimeout(()=>f.remove(),1000);
+}
+function icsOfExam(e){const s=subject(e.subjectId);return {subjects:s?[{id:s.id,name:s.name}]:[],exams:[e],tasks:[]};}
 
 // ======================= Estado de la pantalla =======================
 const S={tab:"inicio",detail:0,period:ALL,day:-1,cal:null,calSel:today(),hl:0,showDone:false};
@@ -504,7 +592,7 @@ function upcoming(limit){
 function upRow(it){
   const o=it.o,s=subject(o.subjectId)||{name:"",color:COLORS[0]};const c=hex(s.color);
   if(it.k==="e"){
-    const meta=[s.name];if(o.type===NORMAL&&o.weight>0)meta.push(fmtPct(o.weight)+" %");if(o.type===MEDIA)meta.push("hace media");if(o.type===SUBIR)meta.push("subir nota");
+    const meta=[s.name];if(o.type===NORMAL&&o.weight>0)meta.push(fmtPct(o.weight)+" %");if(o.type===MEDIA)meta.push("hace media");if(o.type===SUBIR)meta.push("subir nota");if(o.type===RECU)meta.push("recuperación");
     return `<button class="row${S.hl===o.id?" hl":""}" data-a="exam" data-id="${o.id}">${dateTile(o.date,c)}<span class="tx"><span class="t">${esc(o.title||"Examen")}</span><span class="s">${esc(meta.join(" · "))}</span></span><span class="r">${o.date?rel(o.date):""}</span></button>`;
   }
   return `<div class="row${o.done?" done":""}${S.hl===o.id?" hl":""}"><button class="check" data-a="toggleTask" data-id="${o.id}" role="checkbox" aria-checked="${o.done}" aria-label="Hecha">${o.done?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-11"/></svg>':""}</button><button class="tx" style="border:0;background:none;text-align:left;padding:0" data-a="task" data-id="${o.id}"><span class="t">${esc(o.title||"Tarea")}</span><span class="s">${esc(s.name)} · tarea</span></button><span class="r">${o.due?rel(o.due):""}</span></div>`;
@@ -530,6 +618,8 @@ function renderInicio(){
   return header("Mis notas",`<button class="circ" data-a="settings" aria-label="Ajustes">${ICON.gear}</button>`,longDate(today()))+
   `<div class="stack" style="margin-top:14px">${periodSeg()}
    <button class="hero" data-a="weights" aria-label="Media y porcentajes de cada asignatura"><span class="hl"><span class="lab">${esc(lab)}</span><span class="big${o.avg>=0&&o.avg<5?" ko":""}">${o.avg>=0?fmt1(o.avg):"–"}</span><span class="hsub">${esc(sub)}</span>${warn?`<span class="hwarn">${esc(warn)}</span>`:""}</span>${ring(o.passed,o.withGrade)}</button>
+   <button class="row plain" style="background:var(--surface);border-radius:16px" data-a="sim"><span class="tx"><span class="t">¿Y si...?</span><span class="s">Prueba notas y mira cómo cambiaría tu media</span></span>${chev}</button>
+   ${weekCard()}
    <section class="sect"><div class="sect-h"><h2>Tus asignaturas</h2><button class="link" data-a="report">Notas finales</button></div><div class="shelf">${covers}</div></section>
    <section class="sect"><div class="sect-h"><h2>Próximamente</h2>${up.length?`<button class="link" data-a="tab" data-v="proximos">Ver todo</button>`:""}</div>
    ${up.length?`<div class="group">${up.map(upRow).join("")}</div>`:`<p class="note">Nada a la vista. Pulsa + para apuntar un examen o una entrega.</p>`}
@@ -538,11 +628,35 @@ function renderInicio(){
    <p class="sync">${syncLabel()}</p></div>`;
 }
 function syncLabel(){
-  return syncState==="cloud"?"Guardado en tu cuenta de Claude":syncState==="big"?"Hay demasiados datos para guardarlos en tu cuenta; se guardan solo en este móvil":syncState==="error"?"No se pudo guardar en tu cuenta; se guarda en este móvil":"Guardado en este móvil";
+  if(!SYNC)return "Guardado en este móvil";
+  if(SYNC.err)return "Sin conexión: se sincroniza cuando vuelva internet";
+  return SYNC.last?"Sincronizado "+whenText(SYNC.last)+(SYNC.dirty?" · hay cambios por subir":""):"Sincronización activada";
+}
+function whenText(ms){const d=new Date(ms);const hm=d.getHours()+":"+pad(d.getMinutes());return iso(d)===today()?"hoy a las "+hm:d.getDate()+" "+MON[d.getMonth()].slice(0,3)+" a las "+hm;}
+
+// ---------- Resumen de la semana que viene (fin de semana) ----------
+function weekItems(from,to){
+  const it=[];
+  for(const e of D.exams)if(e.date&&e.date>=from&&e.date<=to)it.push({k:"e",date:e.date,o:e});
+  for(const k of D.tasks)if(!k.done&&k.due&&k.due>=from&&k.due<=to)it.push({k:"t",date:k.due,o:k});
+  return it.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
+}
+function weekTitle(ne,nt){
+  if(!ne&&!nt)return "Semana tranquila: sin exámenes ni entregas";
+  const a=ne?ne+(ne===1?" examen":" exámenes"):"",b=nt?nt+(nt===1?" entrega":" entregas"):"";
+  return a+(a&&b?" y ":"")+b;
+}
+function weekCard(){
+  const n=new Date(),dw=n.getDay();if(dw!==6&&dw!==0)return "";
+  const f=new Date(n);f.setDate(n.getDate()+(dw===6?2:1));const t=new Date(f);t.setDate(f.getDate()+6);
+  const it=weekItems(iso(f),iso(t));const ne=it.filter(x=>x.k==="e").length,nt=it.length-ne;
+  const line=x=>{const s=subject(x.o.subjectId);const d=parseIso(x.date);const what=x.k==="e"?(x.o.type===RECU?"Recuperación":"Examen"):"Entrega";
+    return `<span>${WD[d.getDay()][0].toUpperCase()+WD[d.getDay()].slice(1)} ${d.getDate()} · ${what}${s?" "+esc(abbr(s)):""}: ${esc(x.o.title||"")}</span>`;};
+  return `<button class="wkc" data-a="tab" data-v="proximos"><small>LA SEMANA QUE VIENE</small><b>${esc(weekTitle(ne,nt))}</b>${it.slice(0,6).map(line).join("")}${it.length>6?`<span class="more">y ${it.length-6} más</span>`:""}</button>`;
 }
 
 // ---------- Asignatura ----------
-const TYPE_LABEL=["","Hace media","Subir nota"];
+const TYPE_LABEL=["","Hace media","Subir nota","Recuperación"];
 function renderDetail(){
   const s=subject(S.detail);if(!s){S.detail=0;return renderMain();}
   const st=stats(s.id,S.period);const c=hex(s.color);
@@ -550,11 +664,15 @@ function renderDetail(){
   const tasks=D.tasks.filter(t=>t.subjectId===s.id).sort((a,b)=>(a.done-b.done)||(a.due<b.due?-1:1));
   const lines=[];
   if(st.official>=0)lines.push("Nota del boletín"+(st.calcFinal>=0?" · calculada "+fmt1(st.calcFinal):""));
-  else if(st.avg>=0&&st.gradedW>0&&!st.equalWeights)lines.push("Con nota el "+fmtPct(st.gradedW)+" % de la asignatura");
+  else if(st.avg>=0&&st.gradedW>0&&!st.equalWeights&&st.totalW>0)lines.push("Con nota el "+fmtPct(Math.min(100,st.gradedW/st.totalW*100))+" % de la asignatura");
   if(isFinite(st.needed)&&st.official<0){if(st.needed<=0)lines.push("Ya tienes el 5 asegurado");else if(st.needed<=10)lines.push("Necesitas un "+fmt1(st.needed)+" en lo que queda para aprobar");else lines.push("Con lo que queda no llegas al 5 sin recuperar");}
+  for(const t of D.trimesters){const ts=stats(s.id,t.id);
+    if(ts.recovered)lines.push("Recuperado el "+t.name+": cuenta un "+fmt1(ts.recu)+(ts.beforeRecu>=0?" en vez del "+fmt1(ts.beforeRecu):""));
+    else if(ts.recu>=0&&ts.beforeRecu>=0)lines.push("En la recuperación del "+t.name+" sacaste menos: se queda el "+fmt1(ts.beforeRecu));}
   const share=hoursShare(s.id);
   lines.push(sw(s)>=0?"Cuenta un "+fmtPct(sw(s))+" % en tu media":share>=0?"Cuenta un "+fmtPct(share)+" % (por horas de clase)":"Aún no está en el horario");
-  const rows=exs.map(e=>{const meta=[];if(e.type===NORMAL&&e.weight>0)meta.push(fmtPct(e.weight)+" %");if(e.type!==NORMAL){const l=exam(e.linkId);meta.push(TYPE_LABEL[e.type]+(l?" con "+l.title:e.type===SUBIR?" final":""));}
+  const rows=exs.map(e=>{const meta=[];if(e.type===NORMAL&&e.weight>0)meta.push(fmtPct(e.weight)+" %");if(e.type===RECU){const rt=trim(e.linkId);meta.push("Recuperación del "+(rt?rt.name:"trimestre"));}
+    else if(e.type!==NORMAL){const l=exam(e.linkId);meta.push(TYPE_LABEL[e.type]+(l?" con "+l.title:e.type===SUBIR?" final":""));}
     const t=trimOf(e);if(t)meta.push(t.name);if(e.topics)meta.push(e.topics);
     const g=effGrade(e);
     return `<button class="row${S.hl===e.id?" hl":""}" data-a="exam" data-id="${e.id}">${dateTile(e.date,c)}<span class="tx"><span class="t">${esc(e.title||"Examen")}</span><span class="s">${esc(meta.join(" · ")||"Sin porcentaje")}</span></span>${pill(g)}</button>`;}).join("");
@@ -562,7 +680,7 @@ function renderDetail(){
   <div class="stack">
    <div class="dhero" style="--c:${c}"><span class="ab">${esc(abbr(s))}${s.teacher?" · "+esc(s.teacher):""}</span><span class="nm">${esc(s.name)}</span><span class="gr">${st.finalAvg>=0?fmt1(st.finalAvg):"–"}</span>${lines.map(l=>`<span class="ln">${esc(l)}</span>`).join("")}</div>
    ${periodSeg()}
-   <div class="chips"><button class="chip" data-a="newExam" data-id="${s.id}">+ Examen</button><button class="chip" data-a="newTask" data-id="${s.id}">+ Tarea</button><button class="chip" data-a="official" data-id="${s.id}">Boletín</button><button class="chip" data-a="editSubject" data-id="${s.id}">Editar</button></div>
+   <div class="chips"><button class="chip" data-a="newExam" data-id="${s.id}">+ Examen</button><button class="chip" data-a="newTask" data-id="${s.id}">+ Tarea</button><button class="chip" data-a="official" data-id="${s.id}">Boletín</button><button class="chip" data-a="sim" data-id="${s.id}">¿Y si...?</button><button class="chip" data-a="editSubject" data-id="${s.id}">Editar</button></div>
    <section class="sect"><h2>Exámenes</h2>${rows?`<div class="group">${rows}</div>`:`<p class="note">${S.period===ALL?"Todavía no hay exámenes de esta asignatura.":"No hay exámenes en este trimestre."}</p>`}
    ${st.equalWeights&&exs.length>1?`<p class="note">Ningún examen tiene porcentaje, así que todos cuentan lo mismo.</p>`:""}
    ${!st.equalWeights&&st.totalW>0&&Math.abs(st.totalW-100)>0.01&&S.period===ALL?`<p class="note">Los porcentajes suman ${fmtPct(st.totalW)} %.</p>`:""}</section>
@@ -722,12 +840,17 @@ function subjectOptions(sel,extra){
 function trimOptions(sel){return `<option value="0"${!sel?" selected":""}>Automático (por la fecha)</option>`+D.trimesters.map(t=>`<option value="${t.id}"${t.id===sel?" selected":""}>${esc(t.name)}</option>`).join("");}
 
 // ---------- Examen ----------
+const LINK_LABEL=["","Hace media con","Sube la nota de","Recupera el"];
 function examSheet(e,preset){
   const isNew=!e;
   e=e||Object.assign({id:0,subjectId:(S.detail||(D.subjects[0]||{}).id||0),title:"",date:"",topics:"",grade:-1,weight:0,type:NORMAL,linkId:0,trimId:0},preset||{});
   if(!D.subjects.length){snack("Primero crea una asignatura");return subjectSheet(null);}
   let type=e.type;
-  const linkOpts=(sid)=>{const list=D.exams.filter(x=>x.subjectId===sid&&x.id!==e.id&&x.type!==SUBIR);
+  const linkOpts=(sid)=>{
+    if(type===RECU){let first=-1;const o=D.trimesters.map((t,i)=>{const g=stats(sid,t.id).beforeRecu;if(first<0&&g>=0&&g<5)first=i;return [t,g];});
+      const selId=o.some(([t])=>t.id===e.linkId)?e.linkId:(o[Math.max(0,first)]||[{}])[0].id;
+      return o.map(([t,g])=>`<option value="${t.id}"${t.id===selId?" selected":""}>${esc(t.name)}${g>=0?" ("+fmt1(g)+")":""}</option>`).join("");}
+    const list=D.exams.filter(x=>x.subjectId===sid&&x.id!==e.id&&x.type!==SUBIR&&x.type!==RECU);
     return (type===SUBIR?`<option value="0">Nota final de la asignatura</option>`:"")+list.map(x=>`<option value="${x.id}"${x.id===e.linkId?" selected":""}>${esc(x.title||"Examen")}${x.date?" · "+rel(x.date):""}</option>`).join("");};
   const newSub=preset&&preset._newSubject?`<option value="new" selected>Nueva: ${esc(preset._newSubject)}</option>`:"";
   const body=`
@@ -737,19 +860,20 @@ function examSheet(e,preset){
     <div class="fr"><label for="f-d">Fecha</label><input class="in" type="date" id="f-d" value="${esc(e.date)}"></div>
     <div class="fr"><label for="f-tr">Trimestre</label><select class="in" id="f-tr">${trimOptions(e.trimId)}</select></div>
     <div class="fr" style="flex-direction:column;align-items:stretch;gap:8px;padding:12px 16px"><span>Cómo cuenta</span><div class="radios" role="radiogroup" aria-label="Cómo cuenta">
-      <button role="radio" data-a="etype" data-v="0" aria-checked="${type===0}">Normal</button><button role="radio" data-a="etype" data-v="1" aria-checked="${type===1}">Hace media con otro</button><button role="radio" data-a="etype" data-v="2" aria-checked="${type===2}">Para subir nota</button></div></div>
+      <button role="radio" data-a="etype" data-v="0" aria-checked="${type===0}">Normal</button><button role="radio" data-a="etype" data-v="1" aria-checked="${type===1}">Hace media con otro</button><button role="radio" data-a="etype" data-v="2" aria-checked="${type===2}">Para subir nota</button><button role="radio" data-a="etype" data-v="3" aria-checked="${type===3}">Recuperación</button></div></div>
     <div class="fr" id="r-w" ${type!==NORMAL?"hidden":""}><label for="f-w">Cuenta en la nota (%)</label><input class="in num" id="f-w" inputmode="decimal" value="${e.weight>0?fmtPct(e.weight):""}" placeholder="Ej. 30"></div>
-    <div class="fr" id="r-l" ${type===NORMAL?"hidden":""}><label for="f-l" id="l-l">${type===MEDIA?"Hace media con":"Sube la nota de"}</label><select class="in" id="f-l"></select></div>
+    <div class="fr" id="r-l" ${type===NORMAL?"hidden":""}><label for="f-l" id="l-l">${LINK_LABEL[type]||""}</label><select class="in" id="f-l"></select></div>
     <div class="fr"><label for="f-g">Nota</label><input class="in num" id="f-g" inputmode="decimal" value="${e.grade>=0?fmt(e.grade):""}" placeholder="0–10"></div>
   </div>
+  <p class="note" id="r-rh" ${type!==RECU?"hidden":""}>Si sacas más que la nota del trimestre, cuenta la de la recuperación, también en la media del curso.</p>
   <div class="fld"><label for="f-p">Temas que entran</label><textarea class="in" id="f-p" rows="2" placeholder="Ej. firmas digitales y certificados">${esc(e.topics)}</textarea></div>
-  ${isNew?"":`<div class="btns"><button class="btn" data-a="shareExam" data-id="${e.id}">${ICON.share.replace("<svg",'<svg width="20" height="20"')}Compartir por WhatsApp</button><button class="btn dan" data-a="delExam" data-id="${e.id}">Eliminar examen</button></div>`}`;
+  ${isNew?"":`<div class="btns">${e.date?`<button class="btn" data-a="calExam" data-id="${e.id}">${ICON.cal.replace('width="54" height="54"','width="20" height="20"')}Añadir al calendario</button>`:""}<button class="btn" data-a="shareExam" data-id="${e.id}">${ICON.share.replace("<svg",'<svg width="20" height="20"')}Compartir por WhatsApp</button><button class="btn dan" data-a="delExam" data-id="${e.id}">Eliminar examen</button></div>`}`;
   openSheet(isNew?"Nuevo examen":"Editar examen",body,{save:true,saveLabel:"Guardar examen",onOpen(){
     const fl=document.getElementById("f-l"),fs=document.getElementById("f-s");
-    const refresh=()=>{const sid=+fs.value||0;fl.innerHTML=linkOpts(sid)||`<option value="">No hay otros exámenes</option>`;};
+    const refresh=()=>{const sid=+fs.value||0;fl.innerHTML=linkOpts(sid)||`<option value="">${type===RECU?"No hay trimestres":"No hay otros exámenes"}</option>`;};
     refresh();fs.addEventListener("change",refresh);
     SH.setType=v=>{type=v;document.querySelectorAll("[data-a=etype]").forEach(b=>b.setAttribute("aria-checked",+b.dataset.v===v));
-      document.getElementById("r-w").hidden=v!==NORMAL;document.getElementById("r-l").hidden=v===NORMAL;document.getElementById("l-l").textContent=v===MEDIA?"Hace media con":"Sube la nota de";refresh();};
+      document.getElementById("r-w").hidden=v!==NORMAL;document.getElementById("r-l").hidden=v===NORMAL;document.getElementById("l-l").textContent=LINK_LABEL[v]||"";document.getElementById("r-rh").hidden=v!==RECU;refresh();};
     if(isNew&&!preset)setTimeout(()=>document.getElementById("f-t").focus(),250);
   },save(){
     const snap=snapshot();
@@ -761,6 +885,7 @@ function examSheet(e,preset){
     sid=+sid;
     const link=+val("f-l")||0;
     if(type===MEDIA&&!link)return sheetError("Elige con qué examen hace media.");
+    if(type===RECU&&!link)return sheetError("Primero crea los trimestres en Ajustes.");
     const o=isNew?{id:D.nextId++}:exam(e.id);
     Object.assign(o,{subjectId:sid,title:val("f-t").trim()||"Examen",date:val("f-d"),topics:val("f-p").trim(),grade:g==null?-1:g,weight:type===NORMAL&&w!=null?w:0,type,linkId:type===NORMAL?0:link,trimId:+val("f-tr")||0});
     if(isNew)D.exams.push(o);
@@ -768,7 +893,7 @@ function examSheet(e,preset){
     commit(isNew?"Examen guardado":"Cambios guardados",snap,o.id);
   }});
 }
-function fixLinks(){for(const e of D.exams){if(e.type===NORMAL)continue;const l=exam(e.linkId);if(e.linkId&&(!l||l.subjectId!==e.subjectId)){e.linkId=0;if(e.type===MEDIA)e.type=NORMAL;}}}
+function fixLinks(){for(const e of D.exams){if(e.type===NORMAL)continue;if(e.type===RECU){if(!trim(e.linkId)){e.type=NORMAL;e.linkId=0;}continue;}const l=exam(e.linkId);if(e.linkId&&(!l||l.subjectId!==e.subjectId)){e.linkId=0;if(e.type===MEDIA)e.type=NORMAL;}}}
 
 // ---------- Tarea ----------
 function taskSheet(t,preset){
@@ -835,6 +960,46 @@ function officialSheet(sid){
   openSheet("Notas del boletín",`<p class="note">Pon la nota que te ha salido en el boletín de ${esc(s.name)}. Sustituye a la calculada en tus medias. Déjala vacía para usar la calculada.</p><div class="form">${rows}</div>`,{save:true,save(){
     const vals={};for(const id of D.trimesters.map(t=>t.id).concat([ALL])){const n=num(val("o-"+id));if(n!=null&&(isNaN(n)||n<0||n>10))return sheetError("Las notas van de 0 a 10.");vals[id]=n;}
     const snap=snapshot();s.official={};for(const id in vals)if(vals[id]!=null)s.official[String(id)]=vals[id];commit("Boletín guardado",snap);
+  }});
+}
+
+// ---------- Simulador "¿y si...?" ----------
+function withData(d,fn){const k=D;D=d;try{return fn();}finally{D=k;}}
+function simSheet(sid){
+  if(!D.subjects.length){snack("Primero crea una asignatura");return subjectSheet(null);}
+  if(!subject(sid))sid=S.detail&&subject(S.detail)?S.detail:D.subjects[0].id;
+  const typed={};
+  openSheet("¿Y si...?",`<p class="note">Cambia o inventa notas y mira cómo quedarían tus medias. No se guarda nada.</p>
+   <div class="form"><div class="fr"><label for="sim-s">Asignatura</label><select class="in" id="sim-s">${subjectOptions(sid)}</select></div></div>
+   <div id="sim-rows"></div>
+   <section class="fld"><span class="flab">Cómo quedaría</span><div class="group" id="sim-res" style="padding:4px 16px"></div></section>`,
+  {closeLabel:"Cerrar",footer:`<button class="btn" data-a="simReset">Restablecer</button>`,onOpen(){
+    const sel=document.getElementById("sim-s"),rows=document.getElementById("sim-rows"),res=document.getElementById("sim-res");
+    const row=(n,a,b,big)=>`<div class="simr${big?" b":""}"><span class="n">${esc(n)}</span>${Math.abs(a-b)>0.005?`<span class="was">${a>=0?fmt(a):"–"} →</span>`:""}<span class="now ${b<0?"":b>=5?"ok":"ko"}">${b>=0?fmt(b):"–"}</span></div>`;
+    const calc=()=>{
+      const sim=normalize(JSON.parse(JSON.stringify(toJson(D))));
+      for(const id in typed){const x=sim.exams.find(e=>e.id===+id);if(!x)continue;const v=num(typed[id]);if(v==null)x.grade=-1;else if(!isNaN(v)&&v>=0&&v<=10)x.grade=v;}
+      const s=subject(+sel.value);if(!s)return;
+      const A=stats(s.id,ALL),B=withData(sim,()=>stats(s.id,ALL));let off=A.official>=0;
+      let h=row(s.name,A.finalAvg,B.finalAvg,true);
+      for(const t of D.trimesters){const ta=stats(s.id,t.id);if(!ta.exams&&ta.official<0)continue;if(ta.official>=0)off=true;h+=row(t.name,ta.finalAvg,withData(sim,()=>stats(s.id,t.id)).finalAvg,false);}
+      h+=row("Media del curso",overall(ALL).avg,withData(sim,()=>overall(ALL)).avg,true);
+      if(off)h+=`<p class="note" style="padding:6px 0 4px;color:var(--warn)">Tienes notas del boletín puestas en esta asignatura: mandan sobre lo que simules.</p>`;
+      res.innerHTML=h;
+    };
+    const build=()=>{
+      const sid=+sel.value;const exs=D.exams.filter(e=>e.subjectId===sid).sort((a,b)=>{if(!!a.date!==!!b.date)return a.date?-1:1;return a.date<b.date?-1:a.date>b.date?1:a.id-b.id;});
+      rows.innerHTML=exs.length?`<section class="fld"><span class="flab">Notas</span><div class="form">${exs.map(e=>{
+        const info=(e.type===NORMAL?fmtPct(e.weight||0)+" %":e.type===MEDIA?"hace media":e.type===SUBIR?"subir nota":"recuperación")+(e.grade>=0?" · tienes un "+fmt(e.grade):" · sin nota");
+        const v=typed[e.id]!=null?typed[e.id]:(e.grade>=0?fmt(e.grade):"");
+        return `<div class="fr"><label for="sim-${e.id}" style="min-width:0"><span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.title||"Examen")}</span><span style="font-size:13px;color:var(--sub)">${esc(info)}</span></label><input class="in num" id="sim-${e.id}" data-sim="${e.id}" inputmode="decimal" value="${esc(v)}" placeholder="?"></div>`;}).join("")}</div></section>`
+        :`<p class="note">Esta asignatura no tiene exámenes. Añádelos con su peso para poder simular.</p>`;
+      rows.querySelectorAll("[data-sim]").forEach(i=>i.addEventListener("input",()=>{typed[i.dataset.sim]=i.value;calc();}));
+      calc();
+    };
+    sel.addEventListener("change",build);
+    SH.reset=()=>{for(const k in typed)delete typed[k];build();};
+    build();
   }});
 }
 
@@ -912,6 +1077,19 @@ function trimSheet(){
 }
 
 // ---------- Ajustes y copias ----------
+function syncSettings(){
+  if(!SYNC)return `<p class="note" style="padding:0">Usa los mismos datos aquí y en la app de Android. Crea un enlace y pégalo en el Android, en Ajustes → Sincronizar.</p>
+   <button class="btn pri" data-a="syncCreate">Crear enlace de sincronización</button>
+   <label class="note" for="sy-in" style="padding:0">¿Ya tienes un enlace? Pégalo aquí:</label>
+   <input class="in" id="sy-in" placeholder="https://…/#sync=…" autocomplete="off" autocapitalize="off" spellcheck="false">
+   <button class="btn" data-a="syncJoin">Conectar</button>`;
+  return `<p class="note" style="padding:0">${esc(syncLabel())}</p>
+   <button class="btn pri" data-a="syncNow">Sincronizar ahora</button>
+   <p class="note" style="padding:0">Tu enlace (pégalo en el Android). No lo compartas: quien lo tenga puede ver y cambiar tus datos.</p>
+   <div class="synclink">${esc(syncLink())}</div>
+   <button class="btn" data-a="syncCopy">Copiar enlace</button>
+   <button class="btn dan" data-a="syncOff">Desconectar este móvil</button>`;
+}
 function settingsSheet(){
   const n=D.exams.length,g=D.exams.filter(e=>e.grade>=0).length;
   openSheet("Ajustes",`
@@ -926,8 +1104,15 @@ function settingsSheet(){
    <button class="btn pri" data-a="pickFile">Importar copia de Android</button>
    <button class="btn" data-a="export">Exportar copia</button>
   </div></section>
+  <section class="fld"><span class="flab">Sincronizar con el Android</span><div class="group" style="padding:14px;gap:10px">${syncSettings()}</div></section>
+  <section class="fld"><span class="flab">Calendario</span><div class="group" style="padding:14px;gap:10px">
+   <p class="note" style="padding:0">${SYNC?"Suscríbete y tus exámenes y entregas aparecerán en el calendario del iPhone y se actualizarán solos.":"Pasa tus exámenes y entregas al calendario del móvil. Si activas la sincronización, también puedes suscribirte para que se actualicen solos."}</p>
+   ${SYNC?`<button class="btn pri" data-a="calSub">Suscribirse en el calendario</button>`:""}
+   <button class="btn" data-a="calAll">Añadir todo al calendario (.ics)</button>
+  </div></section>
   <p class="note">${D.subjects.length} asignaturas · ${n} exámenes (${g} con nota) · ${D.tasks.length} tareas<br>${syncLabel()}</p>
-  <p class="sync">Mis Exámenes 1.7 · app web</p>`,{closeLabel:"Cerrar"});
+  <p class="sync">Mis Exámenes 1.8 · app web</p>`,{closeLabel:"Cerrar"});
+  SH.isSettings=true;
 }
 function confirmImport(r){
   let d;try{d=normalize(r);}catch(e){return snack("Ese archivo no es una copia de Mis Exámenes");}
@@ -989,7 +1174,7 @@ function del(list,id,msg){const snap=snapshot();const i=list.findIndex(x=>x.id==
 const A={
   tab(el){S.tab=el.dataset.v;S.detail=0;try{localStorage.setItem("misexamenes-tab",S.tab);}catch(e){}render();window.scrollTo(0,0);},
   add(){addChooser();},
-  close(){closeSheet();},
+  close(){if(SH&&SH.joining){SYNC=null;saveSync();}closeSheet();},
   scrim(el,ev){if(ev.target===el)closeSheet();},
   sheetSave(){SH&&SH.save&&SH.save();},
   period(el){S.period=+el.dataset.v;render();},
@@ -1036,11 +1221,23 @@ const A={
   addTrim(){const last=D.trimesters[D.trimesters.length-1];const a=last?iso(new Date(parseIso(last.end).getTime()+864e5)):today();
     const e=new Date(parseIso(a));e.setMonth(e.getMonth()+3);addTrim(D,"Trimestre "+(D.trimesters.length+1),a,iso(e));save();trimSheet();},
   delTrim(el){const id=+el.dataset.id;const snap=snapshot();D.trimesters=D.trimesters.filter(t=>t.id!==id);
-    for(const e of D.exams)if(e.trimId===id)e.trimId=0;for(const s of D.subjects)delete s.official[String(id)];if(S.period===id)S.period=ALL;save();render();trimSheet();snack("Trimestre quitado",snap);},
+    for(const e of D.exams){if(e.trimId===id)e.trimId=0;if(e.type===RECU&&e.linkId===id){e.type=NORMAL;e.linkId=0;}}for(const s of D.subjects)delete s.official[String(id)];if(S.period===id)S.period=ALL;save();render();trimSheet();snack("Trimestre quitado",snap);},
   pickFile(){document.getElementById("filein").click();},
   export(){exportCopy();},
   undo(){if(!undoSnap)return;D=normalize(JSON.parse(undoSnap));undoSnap=null;document.getElementById("snack").classList.remove("on");save();render();},
-  nowtap(el){if(el.dataset.id){S.detail=+el.dataset.id;render();window.scrollTo(0,0);}}
+  nowtap(el){if(el.dataset.id){S.detail=+el.dataset.id;render();window.scrollTo(0,0);}},
+  sim(el){simSheet(+el.dataset.id||0);},
+  simReset(){SH&&SH.reset&&SH.reset();},
+  calExam(el){const e=exam(+el.dataset.id);if(e)openIcs(icsOfExam(e));},
+  calAll(){openIcs({subjects:D.subjects.map(s=>({id:s.id,name:s.name})),exams:D.exams,tasks:D.tasks});},
+  async calSub(){if(!SYNC)return;const h=await sha256hex(SYNC.code);location.href="webcal://"+appBase().replace(/^https?:\/\//,"")+"sync.php?ics="+h;},
+  syncCreate(){createSync();},
+  syncJoin(){joinSync(val("sy-in"));},
+  syncNow(){syncNow(true);},
+  syncCopy(){const t=syncLink();try{navigator.clipboard.writeText(t).then(()=>snack("Enlace copiado"),()=>snack("Mantén pulsado el enlace para copiarlo"));}catch(e){snack("Mantén pulsado el enlace para copiarlo");}},
+  syncOff(){SYNC=null;saveSync();settingsSheet();snack("Desconectado. Tus datos siguen en este móvil");},
+  keepLocal(){const r=SH&&SH.remote;if(!r)return;closeSheet();forcePush(r.updated,"Sincronizado con los datos de este móvil");},
+  keepRemote(){const r=SH&&SH.remote;if(!r)return;closeSheet();applyRemote(r);}
 };
 document.addEventListener("click",ev=>{
   const el=ev.target.closest("[data-a]");if(!el)return;const f=A[el.dataset.a];if(!f)return;
@@ -1097,7 +1294,10 @@ async function exportLocal(json){
   try{if(loc){D=normalize(JSON.parse(loc.json));lastLocal=+loc.updated||0;}}catch(e){D=null;}
   if(!D){D=newData();lastLocal=0;}
   render();
-  initCloud();
+  const m=/sync=([A-Za-z0-9]{16,64})/.exec(location.hash);
+  if(m){try{history.replaceState(null,"",location.pathname+location.search);}catch(e){}
+    if(!SYNC||SYNC.code!==m[1])setTimeout(()=>joinSync("#sync="+m[1]),300);}
+  if(SYNC)syncNow(false);
 })();
 </script>
 </body>
